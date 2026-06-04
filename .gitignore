@@ -1,0 +1,12 @@
+node_modules/
+.venv/
+.next/
+out/
+.env
+.env.local
+*.log
+/data/
+/clips/
+.DS_Store
+next-env.d.ts
+tsconfig.tsbuildinfo
