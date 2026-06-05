@@ -12,6 +12,9 @@ import { ParamControls } from "@/components/ParamControls";
 import { OutputControls } from "@/components/OutputControls";
 import { ClipCard } from "@/components/ClipCard";
 import { StreamPlayer } from "@/components/StreamPlayer";
+import { FolderTree } from "@/components/FolderTree";
+import { FolderPicker } from "@/components/FolderPicker";
+import { useBookmarks } from "@/lib/useBookmarks";
 
 const EXAMPLES = ["https://twitch.tv/", "https://youtube.com/watch?v=", "https://kick.com/"];
 
@@ -21,29 +24,24 @@ export default function Home() {
   const [url, setUrl] = useState("");
   const [params, setParams] = useState<DetectionParams>(DEFAULT_PARAMS);
   const [output, setOutput] = useState<OutputConfig>(DEFAULT_OUTPUT);
-  const [bookmarks, setBookmarks] = useState<Set<string>>(new Set());
-
-  // Persist bookmarks across refreshes.
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("clipper:bookmarks");
-      if (raw) setBookmarks(new Set(JSON.parse(raw)));
-    } catch {
-      /* ignore */
-    }
-  }, []);
-  const toggleBookmark = (id: string) =>
-    setBookmarks((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      try {
-        localStorage.setItem("clipper:bookmarks", JSON.stringify([...next]));
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
+  const {
+    bookmarks,
+    isBookmarked,
+    toggle: toggleBookmark,
+    remove: removeBookmark,
+    folders,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    isInFolder,
+    toggleClipInFolder,
+  } = useBookmarks();
+  // Folder-tree selection: "live" | "bookmarks" | <folderId>.
+  const [selected, setSelected] = useState<string>("live");
+  const selectedFolder = folders.find((f) => f.id === selected) ?? null;
+  const savedToShow = selectedFolder
+    ? bookmarks.filter((c) => selectedFolder.clipIds.includes(c.id))
+    : bookmarks;
 
   // Push tuned params to a live session, debounced.
   const firstRun = useRef(true);
@@ -155,42 +153,69 @@ export default function Home() {
           )}
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 14,
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 200px) minmax(0, 1fr)",
+              gap: 16,
+              alignItems: "start",
             }}
           >
-            <h2 style={{ fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", gap: 10 }}>
-              Clips
-              {isLive && <LiveDot />}
-              <span className="mono" style={{ fontSize: 13, color: "var(--muted)", fontWeight: 400 }}>
-                {clips.length}
-              </span>
-            </h2>
-          </div>
+            <FolderTree
+              liveCount={clips.length}
+              isLive={!!isLive}
+              bookmarkCount={bookmarks.length}
+              folders={folders}
+              selected={selected}
+              onSelect={setSelected}
+              onCreateFolder={(name) => createFolder(name)}
+              onRenameFolder={renameFolder}
+              onDeleteFolder={deleteFolder}
+            />
 
-          {clips.length === 0 ? (
-            <EmptyState isLive={!!isLive} />
-          ) : (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 290px), 1fr))",
-                gap: 16,
-                alignItems: "start",
-              }}
-            >
-              {clips.map((c) => (
-                <ClipCard
-                  key={c.id}
-                  clip={c}
-                  bookmarked={bookmarks.has(c.id)}
-                  onBookmark={() => toggleBookmark(c.id)}
-                />
-              ))}
+            <div style={{ minWidth: 0 }}>
+              {selected === "live" ? (
+                clips.length === 0 ? (
+                  <EmptyState isLive={!!isLive} />
+                ) : (
+                  <ClipGrid>
+                    {clips.map((c) => (
+                      <ClipCard
+                        key={c.id}
+                        clip={c}
+                        bookmarked={isBookmarked(c.id)}
+                        onBookmark={() => toggleBookmark(c)}
+                      />
+                    ))}
+                  </ClipGrid>
+                )
+              ) : savedToShow.length === 0 ? (
+                selected === "bookmarks" ? (
+                  <BookmarksEmpty />
+                ) : (
+                  <FolderEmpty name={selectedFolder?.name} />
+                )
+              ) : (
+                <ClipGrid>
+                  {savedToShow.map((c) => (
+                    <ClipCard
+                      key={c.id}
+                      clip={c}
+                      bookmarked
+                      onBookmark={() => removeBookmark(c.id)}
+                      footer={
+                        <FolderPicker
+                          clipId={c.id}
+                          folders={folders}
+                          isInFolder={isInFolder}
+                          onToggle={(fid) => toggleClipInFolder(fid, c.id)}
+                          onCreate={(name) => createFolder(name, c.id)}
+                        />
+                      }
+                    />
+                  ))}
+                </ClipGrid>
+              )}
             </div>
-          )}
+          </div>
         </section>
       </div>
     </main>
@@ -230,6 +255,66 @@ export default function Home() {
   }
 }
 
+function ClipGrid({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 340px), 1fr))",
+        gap: 20,
+        alignItems: "start",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function BookmarksEmpty() {
+  return (
+    <div
+      style={{
+        background: "var(--panel)",
+        border: "1px dashed var(--border)",
+        borderRadius: 16,
+        padding: "64px 24px",
+        textAlign: "center",
+        color: "var(--muted)",
+      }}
+    >
+      <div style={{ fontSize: 16, color: "var(--text)", fontWeight: 600, marginBottom: 6 }}>
+        No bookmarks yet
+      </div>
+      <div style={{ fontSize: 13.5, maxWidth: 380, margin: "0 auto", lineHeight: 1.5 }}>
+        Tap the flag icon on any clip to save it here. Bookmarks stick around after
+        you refresh or start a new session.
+      </div>
+    </div>
+  );
+}
+
+function FolderEmpty({ name }: { name?: string }) {
+  return (
+    <div
+      style={{
+        background: "var(--panel)",
+        border: "1px dashed var(--border)",
+        borderRadius: 16,
+        padding: "48px 24px",
+        textAlign: "center",
+        color: "var(--muted)",
+        fontSize: 13.5,
+        lineHeight: 1.5,
+      }}
+    >
+      <div style={{ color: "var(--text)", fontWeight: 600, marginBottom: 4 }}>
+        {name ? `"${name}" is empty` : "Folder is empty"}
+      </div>
+      Open <strong>All</strong> and use “Add to folder” on a clip to file it here.
+    </div>
+  );
+}
+
 function EmptyState({ isLive }: { isLive: boolean }) {
   return (
     <div
@@ -242,7 +327,11 @@ function EmptyState({ isLive }: { isLive: boolean }) {
         color: "var(--muted)",
       }}
     >
-      <div style={{ fontSize: 38, marginBottom: 10 }}>✂️</div>
+      <div style={{ marginBottom: 10, display: "flex", justifyContent: "center" }}>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1.5" strokeLinejoin="round">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
+      </div>
       <div style={{ fontSize: 16, color: "var(--text)", fontWeight: 600, marginBottom: 6 }}>
         {isLive ? "Watching the stream…" : "No clips yet"}
       </div>
@@ -252,25 +341,6 @@ function EmptyState({ isLive }: { isLive: boolean }) {
           : "Paste a live stream URL above and pick what to clip. Detected moments land here."}
       </div>
     </div>
-  );
-}
-
-function LiveDot() {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <span
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          background: "var(--hot)",
-          boxShadow: "0 0 0 0 rgba(255,77,109,0.6)",
-          animation: "clipper-pulse 1.6s infinite",
-        }}
-      />
-      <style>{`@keyframes clipper-pulse{0%{box-shadow:0 0 0 0 rgba(255,77,109,.5)}70%{box-shadow:0 0 0 7px rgba(255,77,109,0)}100%{box-shadow:0 0 0 0 rgba(255,77,109,0)}}`}</style>
-      <span style={{ fontSize: 11, color: "var(--hot)", fontWeight: 700, letterSpacing: 0.5 }}>LIVE</span>
-    </span>
   );
 }
 
@@ -285,11 +355,11 @@ function Header() {
           background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
           display: "grid",
           placeItems: "center",
-          fontWeight: 800,
-          fontSize: 18,
         }}
       >
-        ✂
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="#fff" stroke="#fff" strokeWidth="1.5" strokeLinejoin="round">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
       </div>
       <div>
         <h1 style={{ fontSize: 20, fontWeight: 700 }}>Clipper</h1>

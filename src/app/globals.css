@@ -46,6 +46,18 @@ select {
   font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
 }
 
+@keyframes clipper-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 77, 109, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(255, 77, 109, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 77, 109, 0);
+  }
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

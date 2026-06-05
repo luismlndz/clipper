@@ -43,6 +43,36 @@ brew install ffmpeg streamlink   # enable real capture
 cp .env.example .env.local       # then add keys to go fully live
 ```
 
+## Captions: install libass-enabled ffmpeg (macOS / Homebrew)
+
+Rendering word-level karaoke captions into clips needs an `ffmpeg` built with
+**libass**. The default `brew install ffmpeg` often lacks it; install the
+`homebrew-ffmpeg` tap build instead (its formula bundles libass + libfreetype by
+default).
+
+```bash
+# 1. Add the homebrew-ffmpeg tap.
+brew tap homebrew-ffmpeg/ffmpeg
+
+# 2. (Optional safety) Check nothing else depends on your current ffmpeg.
+#    Anything listed keeps working — the tap build keeps the same name — but
+#    good to know.
+brew uses --installed ffmpeg
+
+# 3. Install the tap build. libass is a default dependency — no flag needed.
+#    (May build from source; can take 10–30 min.)
+HOMEBREW_NO_AUTO_UPDATE=1 brew install homebrew-ffmpeg/ffmpeg/ffmpeg
+```
+
+### Verify it worked
+
+```bash
+ffmpeg -hide_banner -filters  | grep -w ass       # → "ass  V->V  Render ASS subtitles ... libass"
+ffmpeg -hide_banner -encoders | grep -w libx264   # → libx264 still present (crop pipeline keeps working)
+```
+
+Both lines must return a match. If the `ass` line is empty, captions won't render.
+
 ## Architecture
 
 ```
