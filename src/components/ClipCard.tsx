@@ -1,7 +1,6 @@
 "use client";
 
 import type { ClipResult } from "@/lib/types";
-import { SignalBar } from "./SignalBar";
 
 const fmt = (s: number) => {
   const m = Math.floor(s / 60);
@@ -9,13 +8,20 @@ const fmt = (s: number) => {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 };
 
-export function ClipCard({ clip }: { clip: ClipResult }) {
-  const pct = Math.round(clip.score * 100);
+export function ClipCard({
+  clip,
+  bookmarked = false,
+  onBookmark,
+}: {
+  clip: ClipResult;
+  bookmarked?: boolean;
+  onBookmark?: () => void;
+}) {
   return (
     <div
       style={{
         background: "var(--panel)",
-        border: "1px solid var(--border)",
+        border: `1px solid ${bookmarked ? "var(--warn)" : "var(--border)"}`,
         borderRadius: 12,
         padding: 14,
         display: "grid",
@@ -42,19 +48,31 @@ export function ClipCard({ clip }: { clip: ClipResult }) {
             {fmt(clip.startAt)}–{fmt(clip.endAt)} · {(clip.endAt - clip.startAt).toFixed(0)}s
           </span>
         </span>
-        <span
-          className="mono"
+        <button
+          onClick={onBookmark}
+          title={bookmarked ? "Remove bookmark" : "Bookmark clip"}
+          aria-pressed={bookmarked}
           style={{
-            background: "var(--hot)",
-            color: "#fff",
-            borderRadius: 999,
-            padding: "2px 10px",
-            fontSize: 12,
-            fontWeight: 700,
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            padding: 4,
+            lineHeight: 0,
+            flexShrink: 0,
           }}
         >
-          {pct}
-        </span>
+          <svg
+            width="17"
+            height="17"
+            viewBox="0 0 24 24"
+            fill={bookmarked ? "var(--warn)" : "none"}
+            stroke={bookmarked ? "var(--warn)" : "var(--muted)"}
+            strokeWidth="2"
+            strokeLinejoin="round"
+          >
+            <path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z" />
+          </svg>
+        </button>
       </div>
 
       <div style={{ fontSize: 13, color: "var(--accent-2)" }}>▸ {clip.reason}</div>
@@ -86,12 +104,6 @@ export function ClipCard({ clip }: { clip: ClipResult }) {
           No media file (simulated mode — metadata only).
         </div>
       )}
-
-      <div style={{ display: "grid", gap: 5 }}>
-        <SignalBar label="dialogue" value={clip.signals.dialogue} color="var(--accent)" />
-        <SignalBar label="audio" value={clip.signals.audio} color="var(--accent-2)" />
-        <SignalBar label="chat" value={clip.signals.chat} color="#5b8cff" />
-      </div>
     </div>
   );
 }

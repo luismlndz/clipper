@@ -24,6 +24,13 @@ export interface LogLine {
   at: number;
 }
 
+export interface ClipMark {
+  /** Stream clock (seconds) where the clip was triggered. */
+  at: number;
+  clipId: string;
+  quality?: QualityMatch;
+}
+
 const MAX_TRANSCRIPT = 60;
 const MAX_LOGS = 30;
 
@@ -31,6 +38,7 @@ export function useClipper() {
   const [state, setState] = useState<SessionState | null>(null);
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
   const [clips, setClips] = useState<ClipResult[]>([]);
+  const [clipMarks, setClipMarks] = useState<ClipMark[]>([]);
   const [live, setLive] = useState<LiveScore | null>(null);
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [starting, setStarting] = useState(false);
@@ -62,6 +70,11 @@ export function useClipper() {
             quality: event.quality,
           });
           break;
+        case "clipping":
+          setClipMarks((m) =>
+            [{ at: event.at, clipId: event.clipId, quality: event.quality }, ...m].slice(0, 50)
+          );
+          break;
         case "clip":
           setClips((c) => [event.clip, ...c]);
           break;
@@ -88,6 +101,7 @@ export function useClipper() {
       setStarting(true);
       setTranscript([]);
       setClips([]);
+      setClipMarks([]);
       setLive(null);
       setLogs([]);
       try {
@@ -141,6 +155,7 @@ export function useClipper() {
     state,
     transcript,
     clips,
+    clipMarks,
     live,
     logs,
     starting,

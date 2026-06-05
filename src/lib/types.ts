@@ -118,6 +118,7 @@ export type PipelineEvent =
       signals: SignalScores;
       quality?: QualityMatch;
     }
+  | { type: "clipping"; at: number; clipId: string; quality?: QualityMatch }
   | { type: "clip"; clip: ClipResult }
   | { type: "log"; level: "info" | "warn" | "error"; message: string }
   | { type: "stopped"; sessionId: string };

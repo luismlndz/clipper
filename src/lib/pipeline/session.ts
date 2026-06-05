@@ -171,6 +171,10 @@ export class Session {
     const clipId = newId("clip");
     this.clipCount += 1;
 
+    // Signal the moment immediately so the UI can mark the transcript, even
+    // though the rendered media (real mode) lands a few seconds later.
+    this.emit({ type: "clipping", at: triggerAt, clipId, quality });
+
     const buffer = this.source?.buffer ?? null;
 
     const assemble = (mediaUrl?: string): ClipResult => ({
