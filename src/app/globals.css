@@ -54,3 +54,9 @@ select {
   background: var(--border);
   border-radius: 6px;
 }
+
+/* Recording indicator blink for the manual-clip button. */
+@keyframes clipper-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}

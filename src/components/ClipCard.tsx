@@ -1,6 +1,7 @@
 "use client";
 
 import type { ClipResult } from "@/lib/types";
+import { ShareBar } from "./ShareBar";
 
 const fmt = (s: number) => {
   const m = Math.floor(s / 60);
@@ -75,7 +76,7 @@ export function ClipCard({
         </button>
       </div>
 
-      <div style={{ fontSize: 13, color: "var(--accent-2)" }}>▸ {clip.reason}</div>
+      <ShareBar clip={clip} />
 
       {clip.transcript && (
         <div

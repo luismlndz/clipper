@@ -43,6 +43,7 @@ export function useClipper() {
   const [live, setLive] = useState<LiveScore | null>(null);
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [starting, setStarting] = useState(false);
+  const [manualClipping, setManualClipping] = useState(false);
   const esRef = useRef<EventSource | null>(null);
 
   const teardown = useCallback(() => {
@@ -105,6 +106,7 @@ export function useClipper() {
       setClipMarks([]);
       setLive(null);
       setLogs([]);
+      setManualClipping(false);
       try {
         const res = await fetch("/api/sessions", {
           method: "POST",
@@ -129,6 +131,7 @@ export function useClipper() {
 
   const stop = useCallback(async () => {
     if (!state) return;
+    setManualClipping(false);
     await fetch(`/api/sessions/${state.id}`, { method: "DELETE" }).catch(
       () => void 0
     );
@@ -160,6 +163,19 @@ export function useClipper() {
     [state]
   );
 
+  // Manual clipping: first click starts, second click stops and renders the
+  // window. Optimistically flip the local flag so the button responds instantly.
+  const toggleManualClip = useCallback(async () => {
+    if (!state || state.status !== "live") return;
+    const action = manualClipping ? "stop" : "start";
+    setManualClipping((v) => !v);
+    await fetch(`/api/sessions/${state.id}/clip`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action }),
+    }).catch(() => void 0);
+  }, [state, manualClipping]);
+
   useEffect(() => () => teardown(), [teardown]);
 
   const isLive = state?.status === "live" || state?.status === "starting";
@@ -177,5 +193,7 @@ export function useClipper() {
     stop,
     updateParams,
     updateOutput,
+    manualClipping,
+    toggleManualClip,
   };
 }

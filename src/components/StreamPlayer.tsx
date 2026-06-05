@@ -71,10 +71,16 @@ export function StreamPlayer({
   url,
   transcript = [],
   clipMarks = [],
+  manualClipping = false,
+  onToggleClip,
 }: {
   url: string;
   transcript?: TranscriptSegment[];
   clipMarks?: ClipMark[];
+  /** Whether a manual clip is currently being recorded. */
+  manualClipping?: boolean;
+  /** Toggle manual clipping (start on first click, stop on second). */
+  onToggleClip?: () => void;
 }) {
   // Twitch's embed requires the parent param to match the host page's hostname.
   const [parent, setParent] = useState("localhost");
@@ -151,6 +157,37 @@ export function StreamPlayer({
           {label}
         </span>
         <span style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          {onToggleClip && (
+            <button
+              onClick={onToggleClip}
+              title={manualClipping ? "Stop clipping" : "Start a manual clip"}
+              aria-pressed={manualClipping}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                background: manualClipping ? "var(--hot)" : "var(--panel-2)",
+                border: `1px solid ${manualClipping ? "var(--hot)" : "var(--border)"}`,
+                color: manualClipping ? "#fff" : "var(--text)",
+                borderRadius: 7,
+                padding: "3px 10px",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: manualClipping ? 2 : "50%",
+                  background: manualClipping ? "#fff" : "var(--hot)",
+                  animation: manualClipping ? "clipper-blink 1.4s infinite" : undefined,
+                }}
+              />
+              {manualClipping ? "Clipping" : "Clip"}
+            </button>
+          )}
           {!minimized && (
             <button
               onClick={() => setShowCaptions((v) => !v)}
