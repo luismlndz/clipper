@@ -14,10 +14,13 @@ export function TranscriptFeed({
   transcript,
   clipMarks = [],
   height = 360,
+  overlay = false,
 }: {
   transcript: TranscriptSegment[];
   clipMarks?: ClipMark[];
-  height?: number;
+  height?: number | string;
+  /** Render as a translucent overlay (e.g. on top of the stream video). */
+  overlay?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -38,15 +41,18 @@ export function TranscriptFeed({
     <div
       ref={scrollRef}
       style={{
-        background: "var(--panel)",
-        border: "1px solid var(--border)",
-        borderRadius: 14,
+        background: overlay ? "rgba(8,8,14,0.55)" : "var(--panel)",
+        backdropFilter: overlay ? "blur(8px)" : undefined,
+        WebkitBackdropFilter: overlay ? "blur(8px)" : undefined,
+        border: overlay ? "1px solid rgba(255,255,255,0.14)" : "1px solid var(--border)",
+        borderRadius: overlay ? 12 : 14,
         padding: 14,
         height,
         overflowY: "auto",
+        textShadow: overlay ? "0 1px 3px rgba(0,0,0,0.7)" : undefined,
       }}
     >
-      <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10, letterSpacing: 0.5, fontWeight: 600 }}>
+      <div style={{ fontSize: 12, color: overlay ? "rgba(255,255,255,0.7)" : "var(--muted)", marginBottom: 10, letterSpacing: 0.5, fontWeight: 600 }}>
         LIVE TRANSCRIPT
       </div>
       {transcript.length === 0 ? (

@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { TranscriptSegment } from "@/lib/types";
+import type { ClipMark } from "@/lib/useClipper";
+import { TranscriptFeed } from "./TranscriptFeed";
 
 interface Embed {
   platform: "twitch" | "youtube" | "kick";
@@ -64,10 +67,19 @@ function toEmbed(rawUrl: string, parent: string): Embed | null {
   return null; // TikTok / unsupported
 }
 
-export function StreamPlayer({ url }: { url: string }) {
+export function StreamPlayer({
+  url,
+  transcript = [],
+  clipMarks = [],
+}: {
+  url: string;
+  transcript?: TranscriptSegment[];
+  clipMarks?: ClipMark[];
+}) {
   // Twitch's embed requires the parent param to match the host page's hostname.
   const [parent, setParent] = useState("localhost");
   const [minimized, setMinimized] = useState(false);
+  const [showCaptions, setShowCaptions] = useState(true);
   useEffect(() => {
     setParent(window.location.hostname);
   }, []);
@@ -138,21 +150,40 @@ export function StreamPlayer({ url }: { url: string }) {
         >
           {label}
         </span>
-        <button
-          onClick={() => setMinimized((v) => !v)}
-          title={minimized ? "Show stream" : "Minimize stream"}
-          style={{
-            background: "var(--panel-2)",
-            border: "1px solid var(--border)",
-            color: "var(--text)",
-            borderRadius: 7,
-            padding: "3px 10px",
-            fontSize: 12,
-            flexShrink: 0,
-          }}
-        >
-          {minimized ? "▸ Show stream" : "▾ Minimize"}
-        </button>
+        <span style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          {!minimized && (
+            <button
+              onClick={() => setShowCaptions((v) => !v)}
+              title={showCaptions ? "Hide captions" : "Show captions"}
+              aria-pressed={showCaptions}
+              style={{
+                background: showCaptions ? "var(--accent)" : "var(--panel-2)",
+                border: `1px solid ${showCaptions ? "var(--accent)" : "var(--border)"}`,
+                color: showCaptions ? "#fff" : "var(--muted)",
+                borderRadius: 7,
+                padding: "3px 10px",
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              CC
+            </button>
+          )}
+          <button
+            onClick={() => setMinimized((v) => !v)}
+            title={minimized ? "Show stream" : "Minimize stream"}
+            style={{
+              background: "var(--panel-2)",
+              border: "1px solid var(--border)",
+              color: "var(--text)",
+              borderRadius: 7,
+              padding: "3px 10px",
+              fontSize: 12,
+            }}
+          >
+            {minimized ? "▸ Show stream" : "▾ Minimize"}
+          </button>
+        </span>
       </div>
 
       {!minimized && (
@@ -165,6 +196,27 @@ export function StreamPlayer({ url }: { url: string }) {
             allowFullScreen
             style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none" }}
           />
+
+          {/* Full live-transcript panel (with clip markers) overlaid top-right */}
+          {showCaptions && (
+            <div
+              style={{
+                position: "absolute",
+                top: 12,
+                right: 12,
+                bottom: 12,
+                width: "min(44%, 360px)",
+                zIndex: 2,
+              }}
+            >
+              <TranscriptFeed
+                transcript={transcript}
+                clipMarks={clipMarks}
+                overlay
+                height="100%"
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
