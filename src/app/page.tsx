@@ -29,7 +29,7 @@ const EXAMPLES = [
 ];
 
 export default function Home() {
-  const { state, transcript, clips, clipMarks, logs, starting, isLive, start, stop, updateParams, updateOutput } =
+  const { state, transcript, clips, clipMarks, logs, starting, isLive, start, stop, updateParams, updateOutput, manualClipping, toggleManualClip } =
     useClipper();
   const [url, setUrl] = useState("");
   const [params, setParams] = useState<DetectionParams>(DEFAULT_PARAMS);
@@ -177,7 +177,13 @@ export default function Home() {
         {/* Main — the clips (hero) */}
         <section style={{ minWidth: 0 }}>
           {state && (
-            <StreamPlayer url={state.url} transcript={transcript} clipMarks={clipMarks} />
+            <StreamPlayer
+              url={state.url}
+              transcript={transcript}
+              clipMarks={clipMarks}
+              manualClipping={manualClipping}
+              onToggleClip={isLive ? toggleManualClip : undefined}
+            />
           )}
           <div
             style={{

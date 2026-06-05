@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import type { ClipResult } from "@/lib/types";
+import { ShareBar } from "./ShareBar";
 
 const fmt = (s: number) => {
   const m = Math.floor(s / 60);
@@ -78,6 +79,8 @@ export function ClipCard({
           </svg>
         </button>
       </div>
+
+      <ShareBar clip={clip} />
 
       {clip.mediaUrl ? (
         <video

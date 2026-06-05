@@ -4,7 +4,9 @@ import type {
   DetectionParams,
   OutputConfig,
   PipelineEvent,
+  QualityMatch,
   SessionState,
+  SignalScores,
   TranscriptSegment,
 } from "@/lib/types";
 import { newId } from "@/lib/util";
@@ -22,6 +24,9 @@ const HISTORY_SECONDS = 240; // transcript kept for clip assembly
 // emit several segments per window; without this the LLM scorer would fire
 // redundantly. Tunable via SCORE_INTERVAL_SECONDS.
 const SCORE_INTERVAL_SECONDS = Number(process.env.SCORE_INTERVAL_SECONDS) || 4;
+// After a manual clip is stopped, wait this long for the tail segment to finish
+// writing to disk before cutting (segments are ~SEGMENT_SECONDS long).
+const MANUAL_CUT_DELAY_SECONDS = 5;
 
 /** Approximate word timings by splitting a segment's text evenly across its span. */
 function synthWords(seg: TranscriptSegment): CaptionWord[] {
@@ -49,6 +54,7 @@ export class Session {
   private clipCount = 0;
   private clock = 0;
   private lastEvalClock = -Infinity;
+  private manualStart: number | null = null;
   private state: SessionState;
 
   constructor(
@@ -214,33 +220,91 @@ export class Session {
   private async fireClip(tick: SourceTick, evaluation: Evaluation): Promise<void> {
     const { fused: score, signals, reason, quality } = evaluation;
     const params = this.detector.getParams();
-    // Snapshot the format at detection time — if the user switches the aspect
-    // ratio before the delayed cut runs, this clip still uses what was selected
-    // when it fired.
-    const output = this.output;
     const triggerAt = tick.clock;
-    const startAt = Math.max(0, triggerAt - params.preSeconds);
-    const endAt = triggerAt + params.postSeconds;
+    this.renderClip({
+      startAt: Math.max(0, triggerAt - params.preSeconds),
+      endAt: triggerAt + params.postSeconds,
+      triggerAt,
+      score,
+      signals,
+      reason,
+      quality,
+      // Snapshot the format at detection time — if the user switches the aspect
+      // ratio before the delayed cut runs, this clip still uses what was
+      // selected when it fired.
+      output: this.output,
+      delayMs: params.postSeconds * 1000,
+      label: `Moment at ${triggerAt.toFixed(0)}s (score ${score.toFixed(2)})`,
+    });
+  }
+
+  /** Begin a user-driven manual clip at the current stream position. */
+  startManualClip(): void {
+    if (this.manualStart != null) return; // already clipping
+    this.manualStart = this.clock;
+    this.emit({
+      type: "log",
+      level: "info",
+      message: `Manual clip started at ${this.clock.toFixed(0)}s — click again to stop.`,
+    });
+  }
+
+  /** End the manual clip and render everything from the start mark to now. */
+  stopManualClip(): void {
+    if (this.manualStart == null) return;
+    const startAt = this.manualStart;
+    const endAt = Math.max(startAt + 1, this.clock);
+    this.manualStart = null;
+    this.renderClip({
+      startAt,
+      endAt,
+      triggerAt: endAt,
+      score: 1,
+      signals: { dialogue: 0, audio: 0, chat: 0 },
+      reason: "Manual clip",
+      output: this.output,
+      // Wait for the tail segment to finish writing before cutting.
+      delayMs: this.source?.buffer ? MANUAL_CUT_DELAY_SECONDS * 1000 : 0,
+      label: `Manual clip ${startAt.toFixed(0)}s–${endAt.toFixed(0)}s`,
+    });
+  }
+
+  /**
+   * Assemble and (in real mode) render a clip over [startAt, endAt], then emit
+   * it. Shared by automatic detection and manual clipping.
+   */
+  private renderClip(p: {
+    startAt: number;
+    endAt: number;
+    triggerAt: number;
+    score: number;
+    signals: SignalScores;
+    reason: string;
+    quality?: QualityMatch;
+    output: OutputConfig;
+    delayMs: number;
+    label: string;
+  }): void {
     const clipId = newId("clip");
     this.clipCount += 1;
 
     // Signal the moment immediately so the UI can mark the transcript, even
     // though the rendered media (real mode) lands a few seconds later.
-    this.emit({ type: "clipping", at: triggerAt, clipId, quality });
+    this.emit({ type: "clipping", at: p.triggerAt, clipId, quality: p.quality });
 
     const buffer = this.source?.buffer ?? null;
 
     const assemble = (mediaUrl?: string): ClipResult => ({
       id: clipId,
       sessionId: this.id,
-      triggerAt,
-      startAt,
-      endAt,
-      score,
-      signals,
-      quality,
-      reason,
-      transcript: this.transcriptForRange(startAt, endAt),
+      triggerAt: p.triggerAt,
+      startAt: p.startAt,
+      endAt: p.endAt,
+      score: p.score,
+      signals: p.signals,
+      quality: p.quality,
+      reason: p.reason,
+      transcript: this.transcriptForRange(p.startAt, p.endAt),
       mediaUrl,
       createdAt: Date.now(),
     });
@@ -252,27 +316,33 @@ export class Session {
       return;
     }
 
-    // Real mode: wait for the post-roll to land on disk, then cut.
+    // Real mode: wait for the trailing segments to land on disk, then cut.
     const format =
-      output.aspectRatio === "source"
+      p.output.aspectRatio === "source"
         ? "source aspect"
-        : `${output.aspectRatio} crop`;
+        : `${p.output.aspectRatio} crop`;
+    const secs = Math.round(p.delayMs / 1000);
+    const wait = secs > 0 ? ` — cutting in ${secs}s…` : " — cutting…";
     this.emit({
       type: "log",
       level: "info",
-      message: `Moment at ${triggerAt.toFixed(0)}s (score ${score.toFixed(2)}, ${format}) — cutting in ${params.postSeconds}s…`,
+      message: `${p.label}, ${format}${wait}`,
     });
     setTimeout(() => {
-      // Gather words now (not at detection time) so the post-roll's words,
-      // transcribed during the wait, are included in the captions.
-      const captionWords = output.captions
-        ? this.wordsForRange(startAt, endAt)
+      // Gather words now (not earlier) so trailing words transcribed during the
+      // wait are included in the captions.
+      const captionWords = p.output.captions
+        ? this.wordsForRange(p.startAt, p.endAt)
         : undefined;
-      void cutClip(buffer, { clipId, startAt, endAt, output, captionWords })
+      void cutClip(buffer, {
+        clipId,
+        startAt: p.startAt,
+        endAt: p.endAt,
+        output: p.output,
+        captionWords,
+      })
         .then((res) => {
-          const mediaUrl = res.filePath
-            ? `/api/clips/${clipId}`
-            : undefined;
+          const mediaUrl = res.filePath ? `/api/clips/${clipId}` : undefined;
           this.emit({ type: "clip", clip: assemble(mediaUrl) });
           this.emit({ type: "status", state: this.snapshot() });
         })
@@ -283,7 +353,7 @@ export class Session {
             message: `Clip render failed: ${(err as Error).message}`,
           });
         });
-    }, params.postSeconds * 1000);
+    }, p.delayMs);
   }
 
   async stop(): Promise<void> {
