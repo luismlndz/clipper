@@ -175,16 +175,16 @@ export function OutputControls({
             Burn-in captions
           </div>
           <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.35 }}>
-            Render the transcript onto the clip as subtitles (coming soon)
+            Big word-by-word captions, each word highlighted as it's spoken
           </div>
         </div>
         <Toggle on={output.captions} />
       </div>
 
       <span style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.4 }}>
-        Applied to rendered clips in real mode via a lossless center-crop. You
-        can switch this mid-session — each clip uses whatever is selected the
-        moment it's detected.
+        Applied to rendered clips in real mode (crop + captions are burned in).
+        You can switch these mid-session — each clip uses whatever is selected
+        the moment it's detected.
       </span>
     </div>
   );

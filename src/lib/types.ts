@@ -11,6 +11,13 @@ export type SessionStatus =
   | "stopped"
   | "error";
 
+/** A single word with absolute stream timestamps (seconds), for captions. */
+export interface CaptionWord {
+  text: string;
+  start: number;
+  end: number;
+}
+
 /** A single transcribed utterance with absolute stream timestamps (seconds). */
 export interface TranscriptSegment {
   id: string;
@@ -20,6 +27,8 @@ export interface TranscriptSegment {
   text: string;
   /** Optional speaker label from diarization. */
   speaker?: string;
+  /** Optional per-word timings (present when the STT reports them). */
+  words?: CaptionWord[];
 }
 
 /**
