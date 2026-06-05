@@ -12,7 +12,7 @@ import { ParamControls } from "@/components/ParamControls";
 import { OutputControls } from "@/components/OutputControls";
 import { ClipCard } from "@/components/ClipCard";
 import { StreamPlayer } from "@/components/StreamPlayer";
-import { FolderBar } from "@/components/FolderBar";
+import { FolderTree } from "@/components/FolderTree";
 import { FolderPicker } from "@/components/FolderPicker";
 import { useBookmarks } from "@/lib/useBookmarks";
 
@@ -36,12 +36,11 @@ export default function Home() {
     isInFolder,
     toggleClipInFolder,
   } = useBookmarks();
-  const [view, setView] = useState<"live" | "saved">("live");
-  const [activeFolder, setActiveFolder] = useState<string | null>(null);
-
-  const activeFolderObj = folders.find((f) => f.id === activeFolder) ?? null;
-  const savedToShow = activeFolderObj
-    ? bookmarks.filter((c) => activeFolderObj.clipIds.includes(c.id))
+  // Folder-tree selection: "live" | "bookmarks" | <folderId>.
+  const [selected, setSelected] = useState<string>("live");
+  const selectedFolder = folders.find((f) => f.id === selected) ?? null;
+  const savedToShow = selectedFolder
+    ? bookmarks.filter((c) => selectedFolder.clipIds.includes(c.id))
     : bookmarks;
 
   // Push tuned params to a live session, debounced.
@@ -146,48 +145,48 @@ export default function Home() {
           {state && (
             <StreamPlayer url={state.url} transcript={transcript} clipMarks={clipMarks} />
           )}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-            <TabButton active={view === "live"} onClick={() => setView("live")}>
-              Clips
-              {isLive && <LiveDot />}
-              <Count>{clips.length}</Count>
-            </TabButton>
-            <TabButton active={view === "saved"} onClick={() => setView("saved")}>
-              Bookmarks
-              <Count>{bookmarks.length}</Count>
-            </TabButton>
-          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 200px) minmax(0, 1fr)",
+              gap: 16,
+              alignItems: "start",
+            }}
+          >
+            <FolderTree
+              liveCount={clips.length}
+              isLive={!!isLive}
+              bookmarkCount={bookmarks.length}
+              folders={folders}
+              selected={selected}
+              onSelect={setSelected}
+              onCreateFolder={(name) => createFolder(name)}
+              onRenameFolder={renameFolder}
+              onDeleteFolder={deleteFolder}
+            />
 
-          {view === "live" ? (
-            clips.length === 0 ? (
-              <EmptyState isLive={!!isLive} />
-            ) : (
-              <ClipGrid>
-                {clips.map((c) => (
-                  <ClipCard
-                    key={c.id}
-                    clip={c}
-                    bookmarked={isBookmarked(c.id)}
-                    onBookmark={() => toggleBookmark(c)}
-                  />
-                ))}
-              </ClipGrid>
-            )
-          ) : bookmarks.length === 0 ? (
-            <BookmarksEmpty />
-          ) : (
-            <>
-              <FolderBar
-                folders={folders}
-                active={activeFolder}
-                totalCount={bookmarks.length}
-                onSelect={setActiveFolder}
-                onCreate={(name) => createFolder(name)}
-                onRename={renameFolder}
-                onDelete={deleteFolder}
-              />
-              {savedToShow.length === 0 ? (
-                <FolderEmpty name={activeFolderObj?.name} />
+            <div style={{ minWidth: 0 }}>
+              {selected === "live" ? (
+                clips.length === 0 ? (
+                  <EmptyState isLive={!!isLive} />
+                ) : (
+                  <ClipGrid>
+                    {clips.map((c) => (
+                      <ClipCard
+                        key={c.id}
+                        clip={c}
+                        bookmarked={isBookmarked(c.id)}
+                        onBookmark={() => toggleBookmark(c)}
+                      />
+                    ))}
+                  </ClipGrid>
+                )
+              ) : savedToShow.length === 0 ? (
+                selected === "bookmarks" ? (
+                  <BookmarksEmpty />
+                ) : (
+                  <FolderEmpty name={selectedFolder?.name} />
+                )
               ) : (
                 <ClipGrid>
                   {savedToShow.map((c) => (
@@ -209,8 +208,8 @@ export default function Home() {
                   ))}
                 </ClipGrid>
               )}
-            </>
-          )}
+            </div>
+          </div>
         </section>
       </div>
     </main>
@@ -262,46 +261,6 @@ function ClipGrid({ children }: { children: React.ReactNode }) {
     >
       {children}
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 9,
-        background: active ? "var(--panel-2)" : "transparent",
-        border: `1px solid ${active ? "var(--border)" : "transparent"}`,
-        color: active ? "var(--text)" : "var(--muted)",
-        borderRadius: 12,
-        padding: "11px 20px",
-        fontSize: 18,
-        fontWeight: 700,
-        cursor: "pointer",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Count({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="mono" style={{ fontSize: 13, color: "var(--muted)", fontWeight: 400 }}>
-      {children}
-    </span>
   );
 }
 
@@ -362,7 +321,11 @@ function EmptyState({ isLive }: { isLive: boolean }) {
         color: "var(--muted)",
       }}
     >
-      <div style={{ fontSize: 38, marginBottom: 10 }}>✂️</div>
+      <div style={{ marginBottom: 10, display: "flex", justifyContent: "center" }}>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1.5" strokeLinejoin="round">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
+      </div>
       <div style={{ fontSize: 16, color: "var(--text)", fontWeight: 600, marginBottom: 6 }}>
         {isLive ? "Watching the stream…" : "No clips yet"}
       </div>
@@ -372,25 +335,6 @@ function EmptyState({ isLive }: { isLive: boolean }) {
           : "Paste a live stream URL above and pick what to clip. Detected moments land here."}
       </div>
     </div>
-  );
-}
-
-function LiveDot() {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <span
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          background: "var(--hot)",
-          boxShadow: "0 0 0 0 rgba(255,77,109,0.6)",
-          animation: "clipper-pulse 1.6s infinite",
-        }}
-      />
-      <style>{`@keyframes clipper-pulse{0%{box-shadow:0 0 0 0 rgba(255,77,109,.5)}70%{box-shadow:0 0 0 7px rgba(255,77,109,0)}100%{box-shadow:0 0 0 0 rgba(255,77,109,0)}}`}</style>
-      <span style={{ fontSize: 11, color: "var(--hot)", fontWeight: 700, letterSpacing: 0.5 }}>LIVE</span>
-    </span>
   );
 }
 
@@ -405,11 +349,11 @@ function Header() {
           background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
           display: "grid",
           placeItems: "center",
-          fontWeight: 800,
-          fontSize: 18,
         }}
       >
-        ✂
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="#fff" stroke="#fff" strokeWidth="1.5" strokeLinejoin="round">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
       </div>
       <div>
         <h1 style={{ fontSize: 20, fontWeight: 700 }}>Clipper</h1>
