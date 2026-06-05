@@ -1,0 +1,96 @@
+# Clipper — Cursor Project Rules
+
+Real-time livestream clipper. Paste a live Twitch / YouTube / Kick URL → the app
+ingests the stream, transcribes the dialogue, scores rolling transcript windows
+against user-defined "qualities" with an LLM, and auto-cuts clips from a rolling
+buffer the instant something interesting happens.
+
+## Stack
+
+- **Next.js 14 (App Router)** + **React 18** + **TypeScript (strict)**.
+- **No CSS framework.** Styling is inline `style={{}}` objects using CSS custom
+  properties defined in `src/app/globals.css` (`--bg`, `--panel`, `--panel-2`,
+  `--border`, `--text`, `--muted`, `--accent`, `--accent-2`, `--hot`, `--warn`).
+  Match this — do not introduce Tailwind, CSS modules, or styled-components.
+- **External tools (must be on PATH):** `streamlink`, `ffmpeg` (the
+  libass-enabled `homebrew-ffmpeg/ffmpeg` build, required for burned-in
+  captions), and a Python `.venv` with `faster-whisper`.
+- **LLM:** Anthropic SDK (`@anthropic-ai/sdk`), model `claude-haiku-4-5` for
+  high-frequency transcript scoring.
+
+## Architecture
+
+Pipeline (server, `src/lib/pipeline/`):
+- `ingest/` — real capture only. `buffer.ts` runs `streamlink | ffmpeg -f segment`
+  into a rolling buffer of ~4s `.ts` segments; `real.ts` wires buffer + STT.
+  `index.ts#selectSource` **always returns RealSource** and throws if tools are
+  missing. There is NO simulation fallback — do not re-add one.
+- `stt/` — `whisper.ts` spawns the Python sidecar `scripts/whisper_stt.py`
+  (faster-whisper, `base.en`, word timestamps) and reads JSON lines from stdout.
+  `mock.ts` is a last-resort fallback only if the venv is absent.
+- `detect/` — `anthropic.ts` (LLM quality classifier via SDK, structured outputs,
+  prompt caching on the system prompt), `mock-llm.ts` (keyword/energy heuristic
+  fallback when no API key), `detector.ts` (weighted fusion + threshold/cooldown).
+- `clipper.ts` — cuts the clip from the buffer with ffmpeg; `-c copy` for
+  "source" aspect, libx264 re-encode + center-crop for other aspect ratios.
+- `session.ts` — orchestrates ingest → score → clip; emits `PipelineEvent`s.
+- `manager.ts` — process-wide session registry stored on `globalThis`.
+
+API (`src/app/api/`): `sessions` (POST/GET), `sessions/[id]` (GET/PATCH/DELETE),
+`sessions/[id]/events` (SSE stream of `PipelineEvent`), `clips/[id]` (serves mp4).
+
+UI (`src/components/`, all `"use client"`): `StreamPlayer` (embedded official
+player + transcript overlay), `TranscriptFeed`, `ClipCard`, `FolderTree`
+(IDE-style clip folders), `FolderPicker`, `ParamControls`, `OutputControls`.
+Client hooks: `src/lib/useClipper.ts` (SSE → state), `src/lib/useBookmarks.ts`
+(localStorage-backed bookmarks + folders).
+
+Shared types live in `src/lib/types.ts` — `PipelineEvent` is the SSE contract;
+keep client and server in sync when adding event types.
+
+## Conventions
+
+- Prefer TypeScript; functional patterns; small, focused functions.
+- Run `npm run typecheck` (`tsc --noEmit`) after changes; keep it green.
+- **Never import server-only modules into a client component.** `src/lib/util.ts`
+  imports `node:crypto`; importing it into a `"use client"` file breaks the
+  bundle. Inline tiny helpers (slugify, ids) in the component instead.
+- CSS grid/flex overflow: add `minWidth: 0` (or `minmax(0, …)`) to columns that
+  contain wrapping/scrolling content, or children overflow their track.
+- Explain significant changes before making them; suggest tests for new logic.
+
+## Critical gotchas (these have bitten us)
+
+- **Dev-server staleness.** Editing pipeline/server modules often does NOT take
+  effect via hot reload — the `globalThis` manager singleton + Next's module
+  cache serve stale code, so newly-emitted events or changed behavior silently
+  don't appear. After changing anything under `src/lib/pipeline/` or the API
+  routes, do a clean restart: `rm -rf .next && npm run dev` (the dev script runs
+  with `PATH="/opt/homebrew/bin:$PATH"`).
+- **ffmpeg/ffprobe version flag** is `-version` (single dash), not `--version`.
+  `ingest/tools.ts` already special-cases this — keep it.
+- **`.ts` video segments** written to `data/` are MPEG-TS, not TypeScript.
+  `tsconfig.json` excludes `data/`, `.venv`, and `scripts/` — don't remove those
+  excludes or `tsc` tries to compile binary segments.
+- **Captions need libass.** Verify with
+  `ffmpeg -hide_banner -filters | grep -w ass`.
+- **Kick can be embedded** via `player.kick.com/<channel>`; only TikTok/unknown
+  URLs fall back to the "open stream" link. Twitch embeds require
+  `parent=<hostname>`.
+
+## Anthropic / LLM rules
+
+- Use the official SDK, not raw fetch. Model: `claude-haiku-4-5` for scoring
+  (fast/cheap, runs ~once per `SCORE_INTERVAL_SECONDS`). Use exact model-id
+  strings (`claude-haiku-4-5`, `claude-opus-4-8`) — never append date suffixes.
+- Use structured outputs (`output_config.format`) for the JSON verdict; mark the
+  stable system prompt cacheable. No `thinking`/`effort` on Haiku (effort errors).
+- Scoring relies on each quality's label + plain-English description — the LLM
+  infers from slang/context; do NOT reintroduce keyword-hint matching in the LLM
+  path (hints are only for the heuristic fallback).
+
+## Environment (`.env.local`, gitignored)
+
+`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL=claude-haiku-4-5`,
+`SCORE_INTERVAL_SECONDS` (scoring cadence), `BUFFER_WINDOW_SECONDS`,
+`SEGMENT_SECONDS`, `WHISPER_MODEL`. Never commit the key.
