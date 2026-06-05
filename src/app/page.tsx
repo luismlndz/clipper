@@ -15,6 +15,9 @@ import { StreamPlayer } from "@/components/StreamPlayer";
 import { FolderBar } from "@/components/FolderBar";
 import { FolderPicker } from "@/components/FolderPicker";
 import { useBookmarks } from "@/lib/useBookmarks";
+import Image from "next/image";
+import kickIcon from "@/kick-icon.png";
+import twitchIcon from "@/twitch-icon.png";
 
 const EXAMPLES = [
   "https://kick.com/n3on",
@@ -81,18 +84,18 @@ export default function Home() {
     else if (url.trim()) void start(url.trim(), params, output);
   };
 
-  // Clicking an example chip fills the input AND immediately starts clipping.
-  const startWithUrl = (u: string) => {
-    if (isLive || starting) return;
+  // Clicking a suggestion fills the input AND starts clipping it. If a stream is
+  // already live, switch to the new one (stop the current session first).
+  const startWithUrl = async (u: string) => {
+    if (starting) return;
     setUrl(u);
+    if (isLive) await stop();
     void start(u, params, output);
   };
 
   return (
     <main style={{ maxWidth: 1440, margin: "0 auto", padding: "22px 22px 64px" }}>
-      <Header />
-
-      <form onSubmit={onSubmit} style={{ display: "flex", gap: 10, margin: "18px 0 10px" }}>
+      <form onSubmit={onSubmit} style={{ display: "flex", gap: 10, margin: "0 0 10px" }}>
         <input
           value={url}
           onChange={(e) => setUrl(e.target.value)}
@@ -126,28 +129,29 @@ export default function Home() {
         </button>
       </form>
 
-      {!state && (
-        <div style={{ marginBottom: 16 }}>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 700,
-              letterSpacing: 0.6,
-              color: "var(--muted)",
-              marginBottom: 8,
-            }}
-          >
-            SUGGESTIONS
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {EXAMPLES.map((ex) => (
-              <button key={ex} onClick={() => startWithUrl(ex)} className="mono" style={chip}>
-                {ex}
-              </button>
-            ))}
-          </div>
+      <div style={{ marginBottom: 16 }}>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 700,
+            letterSpacing: 0.6,
+            color: "var(--muted)",
+            marginBottom: 8,
+          }}
+        >
+          SUGGESTIONS
         </div>
-      )}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {EXAMPLES.map((ex) => (
+            <SuggestionChip
+              key={ex}
+              url={ex}
+              disabled={starting}
+              onClick={() => void startWithUrl(ex)}
+            />
+          ))}
+        </div>
+      </div>
 
       <div
         style={{
@@ -384,33 +388,6 @@ function LiveDot() {
   );
 }
 
-function Header() {
-  return (
-    <header style={{ display: "flex", alignItems: "center", gap: 12 }}>
-      <div
-        style={{
-          width: 38,
-          height: 38,
-          borderRadius: 11,
-          background: "linear-gradient(135deg, var(--accent), var(--accent-2))",
-          display: "grid",
-          placeItems: "center",
-          fontWeight: 800,
-          fontSize: 18,
-        }}
-      >
-        ✂
-      </div>
-      <div>
-        <h1 style={{ fontSize: 20, fontWeight: 700 }}>Clipper</h1>
-        <p style={{ color: "var(--muted)", fontSize: 13 }}>
-          Real-time livestream clipper — auto-cuts interesting moments as they happen
-        </p>
-      </div>
-    </header>
-  );
-}
-
 function LogPanel({ logs }: { logs: { level: string; message: string; at: number }[] }) {
   const color = (l: string) =>
     l === "error" ? "var(--hot)" : l === "warn" ? "var(--warn)" : "var(--muted)";
@@ -437,6 +414,57 @@ function LogPanel({ logs }: { logs: { level: string; message: string; at: number
       </div>
     </div>
   );
+}
+
+/** A suggestion chip: platform icon + username, parsed from the channel URL. */
+function SuggestionChip({
+  url,
+  disabled,
+  onClick,
+}: {
+  url: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  const { platform, handle } = parseSuggestion(url);
+  const icon = platform === "kick" ? kickIcon : platform === "twitch" ? twitchIcon : null;
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="mono"
+      style={{
+        ...chip,
+        color: "var(--text)",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 7,
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
+      {icon && (
+        <Image src={icon} alt="" width={16} height={16} style={{ borderRadius: 3 }} />
+      )}
+      {handle}
+    </button>
+  );
+}
+
+/** Extract platform + username (first path segment) from a channel URL. */
+function parseSuggestion(url: string): {
+  platform: "kick" | "twitch" | "other";
+  handle: string;
+} {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "");
+    const handle = u.pathname.split("/").filter(Boolean)[0] ?? url;
+    if (host.endsWith("kick.com")) return { platform: "kick", handle };
+    if (host.endsWith("twitch.tv")) return { platform: "twitch", handle };
+    return { platform: "other", handle: url };
+  } catch {
+    return { platform: "other", handle: url };
+  }
 }
 
 const chip: React.CSSProperties = {
