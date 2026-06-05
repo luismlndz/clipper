@@ -62,8 +62,10 @@ export async function cutClip(
 
   // "source" → stream-copy verbatim (instant, lossless, original aspect).
   // Any other ratio → center-crop, which requires a re-encode. We use x264
-  // -qp 0 (mathematically lossless) and copy audio, so frame rate, native
-  // resolution-within-the-crop, and audio are all untouched.
+  // CRF 18 on the High profile with yuv420p: visually lossless, but unlike
+  // -qp 0 (which forces the High 4:4:4 Predictive profile that browsers and
+  // QuickTime can't decode) this plays everywhere. Frame rate and audio are
+  // left untouched (no -r, audio stream-copied).
   const cropFilter = cropFor(req.output.aspectRatio);
   const encode = cropFilter
     ? [
@@ -71,10 +73,12 @@ export async function cutClip(
         cropFilter,
         "-c:v",
         "libx264",
-        "-qp",
-        "0",
+        "-crf",
+        "18",
         "-preset",
         "medium",
+        "-profile:v",
+        "high",
         "-pix_fmt",
         "yuv420p",
         "-c:a",
