@@ -16,7 +16,14 @@ import { FolderBar } from "@/components/FolderBar";
 import { FolderPicker } from "@/components/FolderPicker";
 import { useBookmarks } from "@/lib/useBookmarks";
 
-const EXAMPLES = ["https://twitch.tv/", "https://youtube.com/watch?v=", "https://kick.com/"];
+const EXAMPLES = [
+  "https://kick.com/n3on",
+  "https://kick.com/clavicular",
+  "https://twitch.tv/kaicenat",
+  "https://twitch.tv/jynxzi",
+  "https://kick.com/xqc",
+  "https://twitch.tv/caseoh_",
+];
 
 export default function Home() {
   const { state, transcript, clips, clipMarks, logs, starting, isLive, start, stop, updateParams, updateOutput } =
@@ -74,6 +81,13 @@ export default function Home() {
     else if (url.trim()) void start(url.trim(), params, output);
   };
 
+  // Clicking an example chip fills the input AND immediately starts clipping.
+  const startWithUrl = (u: string) => {
+    if (isLive || starting) return;
+    setUrl(u);
+    void start(u, params, output);
+  };
+
   return (
     <main style={{ maxWidth: 1440, margin: "0 auto", padding: "22px 22px 64px" }}>
       <Header />
@@ -112,17 +126,26 @@ export default function Home() {
         </button>
       </form>
 
-      {!state ? (
-        <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-          {EXAMPLES.map((ex) => (
-            <button key={ex} onClick={() => setUrl(ex)} className="mono" style={chip}>
-              {ex}
-            </button>
-          ))}
-        </div>
-      ) : (
+      {!state && (
         <div style={{ marginBottom: 16 }}>
-          <StatusBar />
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              letterSpacing: 0.6,
+              color: "var(--muted)",
+              marginBottom: 8,
+            }}
+          >
+            SUGGESTIONS
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {EXAMPLES.map((ex) => (
+              <button key={ex} onClick={() => startWithUrl(ex)} className="mono" style={chip}>
+                {ex}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -215,39 +238,6 @@ export default function Home() {
       </div>
     </main>
   );
-
-  function StatusBar() {
-    if (!state) return null;
-    const chips: [string, string][] = [
-      ["status", state.status],
-      ["mode", state.ingestMode],
-      ["platform", state.platform],
-      ["clock", `${Math.floor(state.clock)}s`],
-      ["clips", String(state.clipCount)],
-    ];
-    return (
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {chips.map(([k, v]) => (
-          <span key={k} className="mono" style={statusChip}>
-            <span style={{ color: "var(--muted)" }}>{k} </span>
-            <span
-              style={{
-                color:
-                  k === "status" && v === "live"
-                    ? "var(--accent-2)"
-                    : k === "mode" && v === "simulated"
-                    ? "var(--warn)"
-                    : "var(--text)",
-              }}
-            >
-              {v}
-            </span>
-          </span>
-        ))}
-        {state.error && <span style={{ color: "var(--hot)", fontSize: 12 }}>{state.error}</span>}
-      </div>
-    );
-  }
 }
 
 function ClipGrid({ children }: { children: React.ReactNode }) {
@@ -455,12 +445,5 @@ const chip: React.CSSProperties = {
   color: "var(--muted)",
   borderRadius: 8,
   padding: "6px 10px",
-  fontSize: 12,
-};
-const statusChip: React.CSSProperties = {
-  background: "var(--panel)",
-  border: "1px solid var(--border)",
-  borderRadius: 999,
-  padding: "4px 12px",
   fontSize: 12,
 };
