@@ -24,13 +24,11 @@ export function TranscriptFeed({
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-follow ONLY the panel's own scroll, and only when already near the
-  // bottom — never scrolls the page or yanks you up while reading.
+  // Always pin to the latest line so the most recent dialogue is in view.
+  // Scrolls the panel's own container only (never the page).
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    if (nearBottom) el.scrollTop = el.scrollHeight;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [transcript, clipMarks]);
 
   // For each segment, is there a clip trigger inside its time range?
