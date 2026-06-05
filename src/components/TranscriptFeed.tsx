@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { TranscriptSegment } from "@/lib/types";
+import type { ClipMark } from "@/lib/useClipper";
 
 const fmt = (s: number) => {
   const m = Math.floor(s / 60);
@@ -11,22 +12,27 @@ const fmt = (s: number) => {
 
 export function TranscriptFeed({
   transcript,
+  clipMarks = [],
   height = 360,
 }: {
   transcript: TranscriptSegment[];
+  clipMarks?: ClipMark[];
   height?: number;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-follow ONLY the panel's own scroll, and only when the user is already
-  // near the bottom — never scrolls the page or yanks you up while reading.
+  // Auto-follow ONLY the panel's own scroll, and only when already near the
+  // bottom — never scrolls the page or yanks you up while reading.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const nearBottom =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     if (nearBottom) el.scrollTop = el.scrollHeight;
-  }, [transcript]);
+  }, [transcript, clipMarks]);
+
+  // For each segment, is there a clip trigger inside its time range?
+  const markFor = (s: TranscriptSegment): ClipMark | undefined =>
+    clipMarks.find((m) => m.at >= s.start - 0.6 && m.at <= s.end + 0.6);
 
   return (
     <div
@@ -49,17 +55,44 @@ export function TranscriptFeed({
         </div>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
-          {transcript.map((s) => (
-            <div key={s.id} style={{ display: "flex", gap: 10 }}>
-              <span
-                className="mono"
-                style={{ color: "var(--muted)", fontSize: 12, minWidth: 40 }}
-              >
-                {fmt(s.start)}
-              </span>
-              <span style={{ fontSize: 14 }}>{s.text}</span>
-            </div>
-          ))}
+          {transcript.map((s) => {
+            const mark = markFor(s);
+            return (
+              <div key={s.id} style={{ display: "grid", gap: 4 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    padding: mark ? "4px 6px" : 0,
+                    margin: mark ? "0 -6px" : 0,
+                    borderRadius: 8,
+                    background: mark ? "rgba(255,77,109,0.10)" : "transparent",
+                    borderLeft: mark ? "2px solid var(--hot)" : "2px solid transparent",
+                  }}
+                >
+                  <span className="mono" style={{ color: "var(--muted)", fontSize: 12, minWidth: 40 }}>
+                    {fmt(s.start)}
+                  </span>
+                  <span style={{ fontSize: 14 }}>{s.text}</span>
+                </div>
+                {mark && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: "var(--hot)",
+                      paddingLeft: 50,
+                    }}
+                  >
+                    <span>✂ clip captured{mark.quality ? ` · ${mark.quality.label}` : ""}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

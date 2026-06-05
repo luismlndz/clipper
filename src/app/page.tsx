@@ -12,15 +12,39 @@ import { ParamControls } from "@/components/ParamControls";
 import { OutputControls } from "@/components/OutputControls";
 import { TranscriptFeed } from "@/components/TranscriptFeed";
 import { ClipCard } from "@/components/ClipCard";
+import { StreamPlayer } from "@/components/StreamPlayer";
 
 const EXAMPLES = ["https://twitch.tv/", "https://youtube.com/watch?v=", "https://kick.com/"];
 
 export default function Home() {
-  const { state, transcript, clips, logs, starting, isLive, start, stop, updateParams, updateOutput } =
+  const { state, transcript, clips, clipMarks, logs, starting, isLive, start, stop, updateParams, updateOutput } =
     useClipper();
   const [url, setUrl] = useState("");
   const [params, setParams] = useState<DetectionParams>(DEFAULT_PARAMS);
   const [output, setOutput] = useState<OutputConfig>(DEFAULT_OUTPUT);
+  const [bookmarks, setBookmarks] = useState<Set<string>>(new Set());
+
+  // Persist bookmarks across refreshes.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("clipper:bookmarks");
+      if (raw) setBookmarks(new Set(JSON.parse(raw)));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const toggleBookmark = (id: string) =>
+    setBookmarks((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        localStorage.setItem("clipper:bookmarks", JSON.stringify([...next]));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
 
   // Push tuned params to a live session, debounced.
   const firstRun = useRef(true);
@@ -116,12 +140,13 @@ export default function Home() {
         <aside style={{ display: "grid", gap: 12, minWidth: 0 }}>
           <ParamControls params={params} onChange={setParams} />
           <OutputControls output={output} onChange={setOutput} />
-          <TranscriptFeed transcript={transcript} height={260} />
+          <TranscriptFeed transcript={transcript} clipMarks={clipMarks} height={260} />
           {logs.length > 0 && <LogPanel logs={logs} />}
         </aside>
 
         {/* Main — the clips (hero) */}
         <section style={{ minWidth: 0 }}>
+          {state && <StreamPlayer url={state.url} />}
           <div
             style={{
               display: "flex",
@@ -151,7 +176,12 @@ export default function Home() {
               }}
             >
               {clips.map((c) => (
-                <ClipCard key={c.id} clip={c} />
+                <ClipCard
+                  key={c.id}
+                  clip={c}
+                  bookmarked={bookmarks.has(c.id)}
+                  onBookmark={() => toggleBookmark(c.id)}
+                />
               ))}
             </div>
           )}
