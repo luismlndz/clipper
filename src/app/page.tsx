@@ -10,7 +10,6 @@ import {
 import { useClipper } from "@/lib/useClipper";
 import { ParamControls } from "@/components/ParamControls";
 import { OutputControls } from "@/components/OutputControls";
-import { TranscriptFeed } from "@/components/TranscriptFeed";
 import { ClipCard } from "@/components/ClipCard";
 import { StreamPlayer } from "@/components/StreamPlayer";
 
@@ -140,13 +139,14 @@ export default function Home() {
         <aside style={{ display: "grid", gap: 12, minWidth: 0 }}>
           <ParamControls params={params} onChange={setParams} />
           <OutputControls output={output} onChange={setOutput} />
-          <TranscriptFeed transcript={transcript} clipMarks={clipMarks} height={260} />
           {logs.length > 0 && <LogPanel logs={logs} />}
         </aside>
 
         {/* Main — the clips (hero) */}
         <section style={{ minWidth: 0 }}>
-          {state && <StreamPlayer url={state.url} />}
+          {state && (
+            <StreamPlayer url={state.url} transcript={transcript} clipMarks={clipMarks} />
+          )}
           <div
             style={{
               display: "flex",
