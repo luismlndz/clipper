@@ -38,6 +38,15 @@ export class LocalWhisperStt implements SttProvider {
       try {
         const msg = JSON.parse(trimmed);
         if (msg.text) {
+          const words = Array.isArray(msg.words)
+            ? msg.words
+                .map((w: { w?: unknown; s?: unknown; e?: unknown }) => ({
+                  text: String(w.w ?? ""),
+                  start: Number(w.s) || 0,
+                  end: Number(w.e) || 0,
+                }))
+                .filter((w: { text: string }) => w.text.length > 0)
+            : undefined;
           opts.onSegment(
             {
               id: newId("seg"),
@@ -45,6 +54,7 @@ export class LocalWhisperStt implements SttProvider {
               end: Number(msg.end) || 0,
               text: String(msg.text),
               speaker: "streamer",
+              words,
             },
             { audio: typeof msg.rms === "number" ? msg.rms : undefined }
           );

@@ -1,4 +1,5 @@
 import type {
+  CaptionWord,
   ClipResult,
   DetectionParams,
   OutputConfig,
@@ -21,6 +22,18 @@ const HISTORY_SECONDS = 240; // transcript kept for clip assembly
 // emit several segments per window; without this the LLM scorer would fire
 // redundantly. Tunable via SCORE_INTERVAL_SECONDS.
 const SCORE_INTERVAL_SECONDS = Number(process.env.SCORE_INTERVAL_SECONDS) || 4;
+
+/** Approximate word timings by splitting a segment's text evenly across its span. */
+function synthWords(seg: TranscriptSegment): CaptionWord[] {
+  const tokens = seg.text.split(/\s+/).filter(Boolean);
+  if (!tokens.length) return [];
+  const step = (seg.end - seg.start) / tokens.length;
+  return tokens.map((text, i) => ({
+    text,
+    start: seg.start + i * step,
+    end: seg.start + (i + 1) * step,
+  }));
+}
 
 /**
  * Orchestrates one monitoring session: ingest → transcribe → score → clip.
@@ -175,6 +188,29 @@ export class Session {
       .join(" ");
   }
 
+  /**
+   * Per-word timings within the clip window, rebased to clip-relative seconds
+   * (0 = clip start) for burned-in captions. Uses real word timestamps when the
+   * STT provides them; otherwise distributes a segment's words evenly across its
+   * span so captions still roughly track the audio in mock/no-word-data mode.
+   */
+  private wordsForRange(startAt: number, endAt: number): CaptionWord[] {
+    const dur = endAt - startAt;
+    const out: CaptionWord[] = [];
+    for (const seg of this.history) {
+      if (seg.end < startAt || seg.start > endAt) continue;
+      const words = seg.words?.length ? seg.words : synthWords(seg);
+      for (const w of words) {
+        if (w.end < startAt || w.start > endAt) continue;
+        const start = Math.min(Math.max(0, w.start - startAt), dur);
+        const end = Math.min(Math.max(0, w.end - startAt), dur);
+        if (end <= start || !w.text) continue;
+        out.push({ text: w.text, start, end });
+      }
+    }
+    return out.sort((a, b) => a.start - b.start);
+  }
+
   private async fireClip(tick: SourceTick, evaluation: Evaluation): Promise<void> {
     const { fused: score, signals, reason, quality } = evaluation;
     const params = this.detector.getParams();
@@ -227,7 +263,12 @@ export class Session {
       message: `Moment at ${triggerAt.toFixed(0)}s (score ${score.toFixed(2)}, ${format}) — cutting in ${params.postSeconds}s…`,
     });
     setTimeout(() => {
-      void cutClip(buffer, { clipId, startAt, endAt, output })
+      // Gather words now (not at detection time) so the post-roll's words,
+      // transcribed during the wait, are included in the captions.
+      const captionWords = output.captions
+        ? this.wordsForRange(startAt, endAt)
+        : undefined;
+      void cutClip(buffer, { clipId, startAt, endAt, output, captionWords })
         .then((res) => {
           const mediaUrl = res.filePath
             ? `/api/clips/${clipId}`

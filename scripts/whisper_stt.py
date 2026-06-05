@@ -92,17 +92,30 @@ def main():
             audio_level = max(0.0, min(1.0, rms * 3.0))
 
             segments, _ = model.transcribe(
-                samples, language="en", beam_size=1, vad_filter=True
+                samples, language="en", beam_size=1, vad_filter=True,
+                word_timestamps=True,
             )
             for seg in segments:
                 text = seg.text.strip()
                 if not text:
                     continue
+                # Per-word timing powers karaoke-style burned-in captions.
+                # Offset each word by window_start, same as the segment times.
+                words = [
+                    {
+                        "w": w.word.strip(),
+                        "s": round(window_start + w.start, 2),
+                        "e": round(window_start + w.end, 2),
+                    }
+                    for w in (seg.words or [])
+                    if w.word.strip()
+                ]
                 print(json.dumps({
                     "start": round(window_start + seg.start, 2),
                     "end": round(window_start + seg.end, 2),
                     "text": text,
                     "rms": round(audio_level, 3),
+                    "words": words,
                 }), flush=True)
     except BrokenPipeError:
         pass
