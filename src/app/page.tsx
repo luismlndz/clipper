@@ -7,6 +7,9 @@ import { ParamControls } from "@/components/ParamControls";
 import { TranscriptFeed } from "@/components/TranscriptFeed";
 import { ClipCard } from "@/components/ClipCard";
 import { StreamPlayer } from "@/components/StreamPlayer";
+import { FolderBar } from "@/components/FolderBar";
+import { FolderPicker } from "@/components/FolderPicker";
+import { useBookmarks } from "@/lib/useBookmarks";
 
 const EXAMPLES = ["https://twitch.tv/", "https://youtube.com/watch?v=", "https://kick.com/"];
 
@@ -15,29 +18,25 @@ export default function Home() {
     useClipper();
   const [url, setUrl] = useState("");
   const [params, setParams] = useState<DetectionParams>(DEFAULT_PARAMS);
-  const [bookmarks, setBookmarks] = useState<Set<string>>(new Set());
+  const {
+    bookmarks,
+    isBookmarked,
+    toggle: toggleBookmark,
+    remove: removeBookmark,
+    folders,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    isInFolder,
+    toggleClipInFolder,
+  } = useBookmarks();
+  const [view, setView] = useState<"live" | "saved">("live");
+  const [activeFolder, setActiveFolder] = useState<string | null>(null);
 
-  // Persist bookmarks across refreshes.
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("clipper:bookmarks");
-      if (raw) setBookmarks(new Set(JSON.parse(raw)));
-    } catch {
-      /* ignore */
-    }
-  }, []);
-  const toggleBookmark = (id: string) =>
-    setBookmarks((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      try {
-        localStorage.setItem("clipper:bookmarks", JSON.stringify([...next]));
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
+  const activeFolderObj = folders.find((f) => f.id === activeFolder) ?? null;
+  const savedToShow = activeFolderObj
+    ? bookmarks.filter((c) => activeFolderObj.clipIds.includes(c.id))
+    : bookmarks;
 
   // Push tuned params to a live session, debounced.
   const firstRun = useRef(true);
@@ -127,43 +126,70 @@ export default function Home() {
         {/* Main — the clips (hero) */}
         <section style={{ minWidth: 0 }}>
           {state && <StreamPlayer url={state.url} />}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 14,
-            }}
-          >
-            <h2 style={{ fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+            <TabButton active={view === "live"} onClick={() => setView("live")}>
               Clips
               {isLive && <LiveDot />}
-              <span className="mono" style={{ fontSize: 13, color: "var(--muted)", fontWeight: 400 }}>
-                {clips.length}
-              </span>
-            </h2>
+              <Count>{clips.length}</Count>
+            </TabButton>
+            <TabButton active={view === "saved"} onClick={() => setView("saved")}>
+              Bookmarks
+              <Count>{bookmarks.length}</Count>
+            </TabButton>
           </div>
 
-          {clips.length === 0 ? (
-            <EmptyState isLive={!!isLive} />
+          {view === "live" ? (
+            clips.length === 0 ? (
+              <EmptyState isLive={!!isLive} />
+            ) : (
+              <ClipGrid>
+                {clips.map((c) => (
+                  <ClipCard
+                    key={c.id}
+                    clip={c}
+                    bookmarked={isBookmarked(c.id)}
+                    onBookmark={() => toggleBookmark(c)}
+                  />
+                ))}
+              </ClipGrid>
+            )
+          ) : bookmarks.length === 0 ? (
+            <BookmarksEmpty />
           ) : (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 290px), 1fr))",
-                gap: 16,
-                alignItems: "start",
-              }}
-            >
-              {clips.map((c) => (
-                <ClipCard
-                  key={c.id}
-                  clip={c}
-                  bookmarked={bookmarks.has(c.id)}
-                  onBookmark={() => toggleBookmark(c.id)}
-                />
-              ))}
-            </div>
+            <>
+              <FolderBar
+                folders={folders}
+                active={activeFolder}
+                totalCount={bookmarks.length}
+                onSelect={setActiveFolder}
+                onCreate={(name) => createFolder(name)}
+                onRename={renameFolder}
+                onDelete={deleteFolder}
+              />
+              {savedToShow.length === 0 ? (
+                <FolderEmpty name={activeFolderObj?.name} />
+              ) : (
+                <ClipGrid>
+                  {savedToShow.map((c) => (
+                    <ClipCard
+                      key={c.id}
+                      clip={c}
+                      bookmarked
+                      onBookmark={() => removeBookmark(c.id)}
+                      footer={
+                        <FolderPicker
+                          clipId={c.id}
+                          folders={folders}
+                          isInFolder={isInFolder}
+                          onToggle={(fid) => toggleClipInFolder(fid, c.id)}
+                          onCreate={(name) => createFolder(name, c.id)}
+                        />
+                      }
+                    />
+                  ))}
+                </ClipGrid>
+              )}
+            </>
           )}
         </section>
       </div>
@@ -202,6 +228,106 @@ export default function Home() {
       </div>
     );
   }
+}
+
+function ClipGrid({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 340px), 1fr))",
+        gap: 20,
+        alignItems: "start",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 9,
+        background: active ? "var(--panel-2)" : "transparent",
+        border: `1px solid ${active ? "var(--border)" : "transparent"}`,
+        color: active ? "var(--text)" : "var(--muted)",
+        borderRadius: 12,
+        padding: "11px 20px",
+        fontSize: 18,
+        fontWeight: 700,
+        cursor: "pointer",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Count({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="mono" style={{ fontSize: 13, color: "var(--muted)", fontWeight: 400 }}>
+      {children}
+    </span>
+  );
+}
+
+function BookmarksEmpty() {
+  return (
+    <div
+      style={{
+        background: "var(--panel)",
+        border: "1px dashed var(--border)",
+        borderRadius: 16,
+        padding: "64px 24px",
+        textAlign: "center",
+        color: "var(--muted)",
+      }}
+    >
+      <div style={{ fontSize: 16, color: "var(--text)", fontWeight: 600, marginBottom: 6 }}>
+        No bookmarks yet
+      </div>
+      <div style={{ fontSize: 13.5, maxWidth: 380, margin: "0 auto", lineHeight: 1.5 }}>
+        Tap the flag icon on any clip to save it here. Bookmarks stick around after
+        you refresh or start a new session.
+      </div>
+    </div>
+  );
+}
+
+function FolderEmpty({ name }: { name?: string }) {
+  return (
+    <div
+      style={{
+        background: "var(--panel)",
+        border: "1px dashed var(--border)",
+        borderRadius: 16,
+        padding: "48px 24px",
+        textAlign: "center",
+        color: "var(--muted)",
+        fontSize: 13.5,
+        lineHeight: 1.5,
+      }}
+    >
+      <div style={{ color: "var(--text)", fontWeight: 600, marginBottom: 4 }}>
+        {name ? `"${name}" is empty` : "Folder is empty"}
+      </div>
+      Open <strong>All</strong> and use “Add to folder” on a clip to file it here.
+    </div>
+  );
 }
 
 function EmptyState({ isLive }: { isLive: boolean }) {
