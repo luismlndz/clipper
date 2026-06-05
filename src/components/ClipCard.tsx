@@ -79,8 +79,6 @@ export function ClipCard({
         </button>
       </div>
 
-      <div style={{ fontSize: 13.5, color: "var(--accent-2)" }}>▸ {clip.reason}</div>
-
       {clip.mediaUrl ? (
         <video
           src={clip.mediaUrl}
