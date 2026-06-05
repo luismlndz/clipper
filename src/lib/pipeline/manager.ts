@@ -1,4 +1,4 @@
-import type { DetectionParams, SessionState } from "@/lib/types";
+import type { DetectionParams, OutputConfig, SessionState } from "@/lib/types";
 import { Session } from "./session";
 
 /**
@@ -8,8 +8,12 @@ import { Session } from "./session";
 class SessionManager {
   private sessions = new Map<string, Session>();
 
-  async create(url: string, params: DetectionParams): Promise<Session> {
-    const session = new Session(url, params);
+  async create(
+    url: string,
+    params: DetectionParams,
+    output: OutputConfig
+  ): Promise<Session> {
+    const session = new Session(url, params, output);
     this.sessions.set(session.id, session);
     void session.start();
     return session;

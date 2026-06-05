@@ -1,6 +1,7 @@
 import type {
   ClipResult,
   DetectionParams,
+  OutputConfig,
   PipelineEvent,
   SessionState,
   TranscriptSegment,
@@ -37,7 +38,11 @@ export class Session {
   private lastEvalClock = -Infinity;
   private state: SessionState;
 
-  constructor(readonly url: string, params: DetectionParams) {
+  constructor(
+    readonly url: string,
+    params: DetectionParams,
+    private output: OutputConfig
+  ) {
     this.id = newId("sess");
     this.detector = new Detector(params, selectDialogueScorer());
     this.state = {
@@ -77,6 +82,14 @@ export class Session {
     this.detector.updateParams(params);
     this.state.params = params;
     this.emit({ type: "status", state: this.snapshot() });
+  }
+
+  /**
+   * Live-swap the output format. Each clip uses whatever is selected at the
+   * moment it's detected, so the format can change between clips in one session.
+   */
+  updateOutput(output: OutputConfig): void {
+    this.output = output;
   }
 
   async start(): Promise<void> {
@@ -165,6 +178,10 @@ export class Session {
   private async fireClip(tick: SourceTick, evaluation: Evaluation): Promise<void> {
     const { fused: score, signals, reason, quality } = evaluation;
     const params = this.detector.getParams();
+    // Snapshot the format at detection time — if the user switches the aspect
+    // ratio before the delayed cut runs, this clip still uses what was selected
+    // when it fired.
+    const output = this.output;
     const triggerAt = tick.clock;
     const startAt = Math.max(0, triggerAt - params.preSeconds);
     const endAt = triggerAt + params.postSeconds;
@@ -196,13 +213,17 @@ export class Session {
     }
 
     // Real mode: wait for the post-roll to land on disk, then cut.
+    const format =
+      output.aspectRatio === "source"
+        ? "source aspect"
+        : `${output.aspectRatio} crop`;
     this.emit({
       type: "log",
       level: "info",
-      message: `Moment at ${triggerAt.toFixed(0)}s (score ${score.toFixed(2)}) — cutting in ${params.postSeconds}s…`,
+      message: `Moment at ${triggerAt.toFixed(0)}s (score ${score.toFixed(2)}, ${format}) — cutting in ${params.postSeconds}s…`,
     });
     setTimeout(() => {
-      void cutClip(buffer, { clipId, startAt, endAt })
+      void cutClip(buffer, { clipId, startAt, endAt, output })
         .then((res) => {
           const mediaUrl = res.filePath
             ? `/api/clips/${clipId}`

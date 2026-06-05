@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { manager } from "@/lib/pipeline/manager";
-import { DEFAULT_PARAMS, type DetectionParams } from "@/lib/types";
+import {
+  DEFAULT_OUTPUT,
+  DEFAULT_PARAMS,
+  type DetectionParams,
+  type OutputConfig,
+} from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,15 +31,24 @@ export async function PATCH(
   }
   const body = (await req.json().catch(() => ({}))) as {
     params?: Partial<DetectionParams>;
+    output?: Partial<OutputConfig>;
   };
-  const current = session.snapshot().params;
-  const next: DetectionParams = {
-    ...DEFAULT_PARAMS,
-    ...current,
-    ...body.params,
-    qualities: body.params?.qualities ?? current.qualities,
-  };
-  session.updateParams(next);
+
+  if (body.params) {
+    const current = session.snapshot().params;
+    const next: DetectionParams = {
+      ...DEFAULT_PARAMS,
+      ...current,
+      ...body.params,
+      qualities: body.params?.qualities ?? current.qualities,
+    };
+    session.updateParams(next);
+  }
+
+  if (body.output) {
+    session.updateOutput({ ...DEFAULT_OUTPUT, ...body.output });
+  }
+
   return NextResponse.json({ state: session.snapshot() });
 }
 

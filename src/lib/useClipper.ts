@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ClipResult,
   DetectionParams,
+  OutputConfig,
   PipelineEvent,
   QualityMatch,
   SessionState,
@@ -84,7 +85,7 @@ export function useClipper() {
   }, [teardown]);
 
   const start = useCallback(
-    async (url: string, params: DetectionParams) => {
+    async (url: string, params: DetectionParams, output: OutputConfig) => {
       setStarting(true);
       setTranscript([]);
       setClips([]);
@@ -94,7 +95,7 @@ export function useClipper() {
         const res = await fetch("/api/sessions", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ url, params }),
+          body: JSON.stringify({ url, params, output }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "failed to start");
@@ -133,6 +134,18 @@ export function useClipper() {
     [state]
   );
 
+  const updateOutput = useCallback(
+    async (output: OutputConfig) => {
+      if (!state || state.status !== "live") return;
+      await fetch(`/api/sessions/${state.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ output }),
+      }).catch(() => void 0);
+    },
+    [state]
+  );
+
   useEffect(() => () => teardown(), [teardown]);
 
   const isLive = state?.status === "live" || state?.status === "starting";
@@ -148,5 +161,6 @@ export function useClipper() {
     start,
     stop,
     updateParams,
+    updateOutput,
   };
 }

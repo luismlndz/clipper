@@ -87,6 +87,43 @@ export interface ClipResult {
   createdAt: number;
 }
 
+/**
+ * How rendered clips are formatted. Not yet wired to the ffmpeg cut step
+ * (clips are currently stream-copied at source aspect ratio); this is the
+ * UI-side contract a future render path will consume.
+ */
+export type AspectRatio = "source" | "16:9" | "9:16" | "1:1" | "4:5";
+
+export interface AspectRatioOption {
+  id: AspectRatio;
+  label: string;
+  /** Where this format is typically used. */
+  use: string;
+  /** Proportions used to draw the preview thumbnail (and to crop later). */
+  w: number;
+  h: number;
+}
+
+export const ASPECT_RATIOS: AspectRatioOption[] = [
+  { id: "source", label: "Source", use: "Original, no crop", w: 16, h: 9 },
+  { id: "9:16", label: "9:16", use: "Shorts, Reels, TikTok", w: 9, h: 16 },
+  { id: "1:1", label: "1:1", use: "Square feed post", w: 1, h: 1 },
+  { id: "4:5", label: "4:5", use: "Instagram portrait", w: 4, h: 5 },
+  { id: "16:9", label: "16:9", use: "YouTube, landscape", w: 16, h: 9 },
+];
+
+/** Output/formatting config for rendered clips. */
+export interface OutputConfig {
+  aspectRatio: AspectRatio;
+  /** Burn transcript captions into the rendered video. */
+  captions: boolean;
+}
+
+export const DEFAULT_OUTPUT: OutputConfig = {
+  aspectRatio: "source",
+  captions: false,
+};
+
 export interface SessionConfig {
   url: string;
   params: DetectionParams;

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
+import { ASPECT_RATIOS, type OutputConfig } from "@/lib/types";
 import type { RollingBuffer } from "./ingest/buffer";
 
 const CLIPS_ROOT = path.join(process.cwd(), "data", "clips");
@@ -9,6 +10,8 @@ export interface CutRequest {
   clipId: string;
   startAt: number;
   endAt: number;
+  /** Desired output format (aspect ratio / captions). */
+  output: OutputConfig;
 }
 
 export interface CutResult {
@@ -41,7 +44,7 @@ export async function cutClip(
   const ss = Math.max(0, req.startAt - concatStart);
   const dur = Math.max(1, req.endAt - req.startAt);
 
-  const ok = await runFfmpeg([
+  const input = [
     "-hide_banner",
     "-loglevel",
     "error",
@@ -55,14 +58,54 @@ export async function cutClip(
     ss.toFixed(2),
     "-t",
     dur.toFixed(2),
-    "-c",
-    "copy",
-    "-y",
-    outPath,
-  ]);
+  ];
+
+  // "source" → stream-copy verbatim (instant, lossless, original aspect).
+  // Any other ratio → center-crop, which requires a re-encode. We use x264
+  // -qp 0 (mathematically lossless) and copy audio, so frame rate, native
+  // resolution-within-the-crop, and audio are all untouched.
+  const cropFilter = cropFor(req.output.aspectRatio);
+  const encode = cropFilter
+    ? [
+        "-vf",
+        cropFilter,
+        "-c:v",
+        "libx264",
+        "-qp",
+        "0",
+        "-preset",
+        "medium",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "copy",
+        "-movflags",
+        "+faststart",
+      ]
+    : ["-c", "copy"];
+
+  const ok = await runFfmpeg([...input, ...encode, "-y", outPath]);
 
   await rm(listPath, { force: true }).catch(() => void 0);
   return { filePath: ok ? outPath : null };
+}
+
+/**
+ * Build a center-crop filter for the target aspect ratio, or null for "source"
+ * (no crop). Expressed in terms of the input's own iw/ih so the source
+ * resolution never has to be probed; dimensions are floored to even values
+ * because libx264 requires width/height divisible by 2. The commas inside
+ * min() are backslash-escaped so ffmpeg's filtergraph parser doesn't read them
+ * as filter-chain separators.
+ */
+function cropFor(aspectRatio: OutputConfig["aspectRatio"]): string | null {
+  if (aspectRatio === "source") return null;
+  const opt = ASPECT_RATIOS.find((a) => a.id === aspectRatio);
+  if (!opt) return null;
+  const a = opt.w / opt.h;
+  const cw = `floor(min(iw\\,ih*${a})/2)*2`;
+  const ch = `floor(min(ih\\,iw/${a})/2)*2`;
+  return `crop=${cw}:${ch}`;
 }
 
 function runFfmpeg(args: string[]): Promise<boolean> {

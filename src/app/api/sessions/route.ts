@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { manager } from "@/lib/pipeline/manager";
-import { DEFAULT_PARAMS, type DetectionParams } from "@/lib/types";
+import {
+  DEFAULT_OUTPUT,
+  DEFAULT_PARAMS,
+  type DetectionParams,
+  type OutputConfig,
+} from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +15,11 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  let body: { url?: string; params?: Partial<DetectionParams> };
+  let body: {
+    url?: string;
+    params?: Partial<DetectionParams>;
+    output?: Partial<OutputConfig>;
+  };
   try {
     body = await req.json();
   } catch {
@@ -28,6 +37,8 @@ export async function POST(req: Request) {
     qualities: body.params?.qualities ?? DEFAULT_PARAMS.qualities,
   };
 
-  const session = await manager.create(url, params);
+  const output: OutputConfig = { ...DEFAULT_OUTPUT, ...body.output };
+
+  const session = await manager.create(url, params, output);
   return NextResponse.json({ id: session.id, state: session.snapshot() });
 }

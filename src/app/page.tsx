@@ -1,19 +1,26 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_PARAMS, type DetectionParams } from "@/lib/types";
+import {
+  DEFAULT_OUTPUT,
+  DEFAULT_PARAMS,
+  type DetectionParams,
+  type OutputConfig,
+} from "@/lib/types";
 import { useClipper } from "@/lib/useClipper";
 import { ParamControls } from "@/components/ParamControls";
+import { OutputControls } from "@/components/OutputControls";
 import { TranscriptFeed } from "@/components/TranscriptFeed";
 import { ClipCard } from "@/components/ClipCard";
 
 const EXAMPLES = ["https://twitch.tv/", "https://youtube.com/watch?v=", "https://kick.com/"];
 
 export default function Home() {
-  const { state, transcript, clips, logs, starting, isLive, start, stop, updateParams } =
+  const { state, transcript, clips, logs, starting, isLive, start, stop, updateParams, updateOutput } =
     useClipper();
   const [url, setUrl] = useState("");
   const [params, setParams] = useState<DetectionParams>(DEFAULT_PARAMS);
+  const [output, setOutput] = useState<OutputConfig>(DEFAULT_OUTPUT);
 
   // Push tuned params to a live session, debounced.
   const firstRun = useRef(true);
@@ -27,10 +34,22 @@ export default function Home() {
     return () => clearTimeout(t);
   }, [params, isLive, updateParams]);
 
+  // Live-swap the output format on a running session — the next clip detected
+  // uses whatever is selected now.
+  const firstOutputRun = useRef(true);
+  useEffect(() => {
+    if (firstOutputRun.current) {
+      firstOutputRun.current = false;
+      return;
+    }
+    if (!isLive) return;
+    void updateOutput(output);
+  }, [output, isLive, updateOutput]);
+
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isLive) void stop();
-    else if (url.trim()) void start(url.trim(), params);
+    else if (url.trim()) void start(url.trim(), params, output);
   };
 
   return (
@@ -96,6 +115,7 @@ export default function Home() {
         {/* Sidebar — controls + live context */}
         <aside style={{ display: "grid", gap: 12, minWidth: 0 }}>
           <ParamControls params={params} onChange={setParams} />
+          <OutputControls output={output} onChange={setOutput} />
           <TranscriptFeed transcript={transcript} height={260} />
           {logs.length > 0 && <LogPanel logs={logs} />}
         </aside>
